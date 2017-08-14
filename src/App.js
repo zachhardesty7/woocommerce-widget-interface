@@ -1,15 +1,6 @@
 import React, { Component } from 'react';
 import './App.css';
 
-// TODO:
-/*******
- *  lift 'hidden' state to 'App' for consistency
- *  remove useless constructors / convert to pure functions
- *  implement focus indicator
- *  fix focusing wrong elements
- *  styling duh
- */
-
 const data = [
   {
     type: 'affiliate',
@@ -85,7 +76,8 @@ class App extends Component {
       index: 0,
       focus: 0,
       type: '',
-      completed: false
+      completed: false,
+      hidden: []
     };
   }
   handleChange = (key) => {
@@ -96,8 +88,7 @@ class App extends Component {
     };
   }
   handleTypeChangeClick = (e) => {
-    this.setState({type: e.target.value})
-    this.setState({focus: 1})
+    this.setState({type: e.target.value, focus: 1})
   }
   handleReset = () => {
     this.setState({index: 0, focus: 0, completed: false})
@@ -128,6 +119,7 @@ class App extends Component {
             // output changing focus +1 back to offset
             focus={this.state.focus - 1}
             type={this.state.type}
+            hidden={this.state.hidden}
           />
         }
         <div>
@@ -150,12 +142,6 @@ class App extends Component {
 }
 
 class Build extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      hidden: []
-    };
-  }
   handleSizeChange = (key) => {
     return (e) => {
       this.setState({[key]: e.target.value});
@@ -166,18 +152,7 @@ class Build extends Component {
   }
   handleChange = (key) => {
     return (value) => {
-
-      // TODO: abstract -----------------------------
-      const modes = {
-        express: [0],
-        custom: [0,5,6,7,8],
-        advanced: [0,1,2,3,4,5,6,7,8]
-      }
-      // filter data to proper fields for given mode
-      const filtered = this.props.data.filter((field, i) => {
-        return (modes[this.props.type].includes(i));
-      })
-      // ---------------------------------------------
+      let filtered = this.filterData();
 
       // FIXME: returning -1 for fields when using ID vs key
       let newFocus = filtered.findIndex((field) => {
@@ -194,17 +169,15 @@ class Build extends Component {
       if (value === 'dynamic') {
         newIndex++;
         newFocus++;
-        if (!this.state.hidden.includes(key)) {
-          this.setState({ hidden: [...this.state.hidden, key] });
+        if (!this.props.hidden.includes(key)) {
+          this.props.onChange('hidden')([...this.props.hidden, key])
         }
       }
-      let hiddenIndex = this.state.hidden.indexOf(key);
+      let hiddenIndex = this.props.hidden.indexOf(key);
       if (hiddenIndex !== -1 && value === 'false') {
-        this.setState({
-          hidden: [
-            ...this.state.hidden.slice(0,hiddenIndex), ...this.state.hidden.slice(hiddenIndex+1)
-          ]
-        });
+        this.props.onChange('hidden')([
+          ...this.props.hidden.slice(0, hiddenIndex), ...this.props.hidden.slice(hiddenIndex + 1)
+        ])
       }
       // if new index equals new focus (plus offset)
       // inc index
@@ -213,17 +186,12 @@ class Build extends Component {
       // inc focus and output w/ +1 to offset -1 on input
       this.props.onChange('focus')(newFocus + 1 + 1);
       if (newIndex === filtered.length)
-        this.props.onChange('completed')(true)
+        this.props.onChange('completed')(true);
       // update output code snippet (App state)
       this.props.onChange(key)(value);
     };
   }
-  handleFocus = () => {
-    return this.props.index === this.props.focus;
-  }
-  render() {
-
-    // TODO: abstract -----------------------------
+  filterData = () => {
     const modes = {
       express: [0],
       custom: [0,5,6,7,8],
@@ -233,17 +201,28 @@ class Build extends Component {
     const filtered = this.props.data.filter((field, i) => {
       return (modes[this.props.type].includes(i));
     })
-    // ---------------------------------------------
-
-    // then map data to react components
-    const options = filtered.map((field, i) => {
+    return filtered;
+  }
+  handleClick = (focus, index) => {
+    if (this.props.focus !== index)  {
+      this.props.onChange('focus')(index + 1);
+    }
+  }
+  render() {
+    // filter prop data by prop type
+    const filtered = this.filterData();
+    // then map prop data to components
+    let options = filtered.map((field, i) => {
       if (field.type === 'affiliate') {
         return (
           <Affiliate
             key={field.key}
             default=''
             onChange={this.handleChange(field.key)}
-            focus={this.handleFocus()}
+            onClick={this.handleClick}
+            index={i}
+            focus={this.props.focus}
+            // focusRef={elem => this.focusElement = elem}
           />
         )
       } else if (field.type === 'dropdown') {
@@ -255,8 +234,10 @@ class Build extends Component {
             values={field.values}
             default=''
             onChange={this.handleChange(field.key)}
-            focus={this.handleFocus()}
-            hidden={this.state.hidden.includes(field.id)}
+            onClick={this.handleClick}
+            hidden={this.props.hidden.includes(field.id)}
+            index={i}
+            focus={this.props.focus}
           />
         )
       } else if (field.type === 'binary') {
@@ -266,7 +247,9 @@ class Build extends Component {
             name={field.name}
             type={field.type}
             onChange={this.handleChange(field.id)}
-            focus={this.handleFocus()}
+            onClick={this.handleClick}
+            index={i}
+            focus={this.props.focus}
           />
         )
       } else if (field.type === 'text') {
@@ -276,8 +259,10 @@ class Build extends Component {
             name={field.name}
             type={field.type}
             onChange={this.handleSizeChange}
-            focus={this.handleFocus()}
-            hidden={this.state.hidden.includes(field.id)}
+            onClick={this.handleClick}
+            hidden={this.props.hidden.includes(field.id)}
+            index={i}
+            focus={this.props.focus}
           />
         )
       } else {
@@ -298,9 +283,6 @@ class Build extends Component {
 }
 
 class InputField extends Component {
-  constructor(props) {
-    super(props);
-  }
   handleChange = (e) => {
     this.props.onChange(e.target.value);
   }
@@ -309,8 +291,12 @@ class InputField extends Component {
       this.props.onChange(key)(e.target.value);
     }
   }
+  handleClick = (e) => {
+    this.props.onClick(this.props.focus, this.props.index);
+  }
   render() {
     if (this.props.hidden) return null;
+    const focus = this.props.index === this.props.focus? 'focus' : 'blur';
     if (this.props.type === 'dropdown') {
       let options = this.props.values.map((value, i) =>
         <option key={value} value={value.toLowerCase()}>{value}</option>
@@ -319,7 +305,7 @@ class InputField extends Component {
         options.unshift(<option key={this.props.default} value={this.props.default}>Choose {this.props.name}</option>);
       }
       return (
-        <div className={this.props.name.toLowerCase()}>
+        <div onMouseDown={this.handleClick} className={this.props.name.toLowerCase() + ' ' + focus}>
           <label>
             {this.props.name + ': '}
             <select onChange={this.handleChange}>
@@ -330,7 +316,7 @@ class InputField extends Component {
       )
     } else if (this.props.type === 'binary') {
       return(
-        <div className={this.props.name.toLowerCase()}>
+        <div onMouseDown={this.handleClick} className={this.props.name.toLowerCase() + ' ' + focus}>
           <label>
             {this.props.name + ': '}
           </label>
@@ -344,7 +330,7 @@ class InputField extends Component {
       )
     } else if (this.props.type === 'text') {
       return (
-        <div className={this.props.name.toLowerCase()}>
+        <div onMouseDown={this.handleClick} className={this.props.name.toLowerCase() + ' ' + focus}>
           <label>
             Width (px):
             <input type="text" name="size" onChange={this.handleSizeChange('width')} />
@@ -360,24 +346,27 @@ class InputField extends Component {
 }
 
 class Affiliate extends Component {
-  constructor(props) {
-    super(props);
-  }
   handleChange = (e) => {
     this.props.onChange(e.target.value);
   }
+  handleClick = () => {
+    this.props.onClick(this.props.focus, this.props.index);
+  }
   render() {
+    const focus = this.props.index === this.props.focus ? 'focus' : 'blur';
     return(
-      <label>
-        Affiliate:
-        <select onChange={this.handleChange}>
-          <option value=''>Choose Affiliate</option>
-          <option value="markporter">Mark Porter</option>
-          <option value="dan-hamilton">Dan Hamilton</option>
-          <option value="tar">Texas Association of Realtors</option>
-          <option value="kar">Kansas Association of Realtors</option>
-        </select>
-      </label>
+      <div onMouseDown={this.handleClick} ref={this.props.focusRef} className={'affiliates ' + focus}>
+        <label>
+          Affiliate:
+          <select onChange={this.handleChange}>
+            <option value=''>Choose Affiliate</option>
+            <option value="markporter">Mark Porter</option>
+            <option value="dan-hamilton">Dan Hamilton</option>
+            <option value="tar">Texas Association of Realtors</option>
+            <option value="kar">Kansas Association of Realtors</option>
+          </select>
+        </label>
+      </div>
     );
   }
 }
